@@ -1,28 +1,45 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import React from "react";
+import { Text, StyleSheet, Platform } from "react-native";
+import { useAppTheme } from "@/context/ThemeContext";
 
-import { Fonts, ThemeColor } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
-
-export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
-  themeColor?: ThemeColor;
+export type ThemedTextProps = {
+  lightColor?: string;
+  darkColor?: string;
+  type?:
+    | "default"
+    | "title"
+    | "defaultSemiBold"
+    | "subtitle"
+    | "link"
+    | "code"
+    | "small";
+  style?: any;
+  children?: React.ReactNode;
 };
 
-export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
-  const theme = useTheme();
+export function ThemedText({
+  style,
+  lightColor,
+  darkColor,
+  type = "default",
+  ...rest
+}: ThemedTextProps) {
+  const { isDark } = useAppTheme();
+
+  // Dynamic text color calculation bypassing the hook dependency
+  const textColor = isDark ? darkColor || "#ffffff" : lightColor || "#000000";
 
   return (
     <Text
       style={[
-        { color: theme[themeColor ?? 'text'] },
-        type === 'default' && styles.default,
-        type === 'title' && styles.title,
-        type === 'small' && styles.small,
-        type === 'smallBold' && styles.smallBold,
-        type === 'subtitle' && styles.subtitle,
-        type === 'link' && styles.link,
-        type === 'linkPrimary' && styles.linkPrimary,
-        type === 'code' && styles.code,
+        { color: textColor },
+        type === "default" ? styles.default : undefined,
+        type === "title" ? styles.title : undefined,
+        type === "defaultSemiBold" ? styles.defaultSemiBold : undefined,
+        type === "subtitle" ? styles.subtitle : undefined,
+        type === "link" ? styles.link : undefined,
+        type === "code" ? styles.code : undefined,
+        type === "small" ? styles.small : undefined,
         style,
       ]}
       {...rest}
@@ -31,43 +48,17 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 }
 
 const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
-  },
-  subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
-  },
-  link: {
-    lineHeight: 30,
-    fontSize: 14,
-  },
-  linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
-    color: '#3c87f7',
-  },
+  default: { fontSize: 16, lineHeight: 24 },
+  defaultSemiBold: { fontSize: 16, lineHeight: 24, fontWeight: "600" },
+  title: { fontSize: 32, fontWeight: "bold", lineHeight: 40 },
+  subtitle: { fontSize: 20, fontWeight: "bold" },
+  link: { lineHeight: 30, fontSize: 16, color: "#0a7ea4" },
   code: {
-    fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
-    fontSize: 12,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    fontSize: 14,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    padding: 4,
+    borderRadius: 4,
   },
+  small: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
 });
