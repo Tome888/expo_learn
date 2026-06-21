@@ -8,13 +8,14 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Keyboard, // 1. Import Keyboard
-  TouchableWithoutFeedback, // 2. Import TouchableWithoutFeedback
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { useState, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as LocalAuthentication from "expo-local-authentication";
+import * as SecureStore from "expo-secure-store";
 
 export default function UserFound() {
   const [user, setUser] = useState<User | null>(null);
@@ -37,20 +38,15 @@ export default function UserFound() {
         [1],
       );
       if (result) {
-        setUser(result);
-        if (result.is_biometric_enabled === 1) {
-          handleBiometricAuth(result);
-        } else {
-          setViewState("login_form");
-        }
+        handleBiometricAuth(result);
       } else {
         setUser(null);
         setViewState("onboarding");
+        setIsLoading(false);
       }
     } catch (error) {
       console.error("Error fetching user:", error);
       setUser(null);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -72,7 +68,7 @@ export default function UserFound() {
       setIsAuthenticating(true);
       const authResult = await LocalAuthentication.authenticateAsync({
         promptMessage: "Sign in to NomadSync",
-        fallbackLabel: "Use Password",
+        fallbackLabel: "Use Credentials",
         disableDeviceFallback: false,
       });
 
@@ -86,6 +82,7 @@ export default function UserFound() {
       setViewState("login_form");
     } finally {
       setIsAuthenticating(false);
+      setIsLoading(false);
     }
   };
 
@@ -123,18 +120,24 @@ export default function UserFound() {
           } else {
             Alert.alert(
               "Notice",
-              "Biometric configuration canceled. Defaulting to manual password verification.",
+              "Biometric configuration canceled. Defaulting to manual verification fallback.",
             );
           }
         }
       }
 
+      await SecureStore.setItemAsync("master_password", password.trim());
+
       await db.runAsync(
-        "INSERT INTO user (id, name, password, is_biometric_enabled) VALUES (?, ?, ?, ?);",
-        [1, username.trim(), password, useBiometrics],
+        "INSERT INTO user (id, name, is_biometric_enabled) VALUES (?, ?, ?);",
+        [1, username.trim(), useBiometrics],
       );
 
       Alert.alert("Success", "Local security profile created successfully.");
+
+      setUsername("");
+      setPassword("");
+
       await checkExistingUser();
     } catch (error) {
       console.error("Failed to register account profile:", error);
@@ -142,14 +145,16 @@ export default function UserFound() {
         "Registration Error",
         "Could not complete account setup configurations.",
       );
-    } finally {
       setIsLoading(false);
     }
   };
 
   const handleManualLogin = async () => {
-    if (!password.trim()) {
-      Alert.alert("Missing Input", "Please type your master account password.");
+    if (!username.trim() || !password.trim()) {
+      Alert.alert(
+        "Missing Fields",
+        "Please enter both your username and password.",
+      );
       return;
     }
 
@@ -160,15 +165,41 @@ export default function UserFound() {
         [1],
       );
 
-      if (dbUser && dbUser.password === password) {
+      const savedPassword = await SecureStore.getItemAsync("master_password");
+
+      if (
+        dbUser &&
+        dbUser.name === username.trim() &&
+        savedPassword === password.trim()
+      ) {
         setUser(dbUser);
       } else {
-        Alert.alert("Access Denied", "Incorrect master security key string.");
+        Alert.alert(
+          "Access Denied",
+          "Incorrect username or master security key.",
+        );
       }
     } catch (error) {
       console.error("Manual matching transaction failure:", error);
+      Alert.alert("Error", "An unexpected security matching error occurred.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBiometricRetry = async () => {
+    try {
+      const res: any = await db.getFirstAsync(
+        "SELECT * FROM user WHERE id = ?;",
+        [1],
+      );
+      if (res) {
+        await handleBiometricAuth(res);
+      } else {
+        Alert.alert("Error", "No local profile found.");
+      }
+    } catch (error) {
+      console.error("Failed executing biometric retry:", error);
     }
   };
 
@@ -186,11 +217,9 @@ export default function UserFound() {
   }
 
   return (
-    // 3. Wrap the main view so taps on the background invoke Keyboard.dismiss()
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <SafeAreaView style={styles.container}>
         <View style={styles.contentCard}>
-          {/* VIEW 1: LANDING BANNER CARD */}
           {viewState === "onboarding" && (
             <View style={styles.formWidth}>
               <View style={styles.iconPlaceholder}>
@@ -212,7 +241,6 @@ export default function UserFound() {
             </View>
           )}
 
-          {/* VIEW 2: ACCOUNT REGISTRATION VIEW */}
           {viewState === "register_form" && (
             <View style={styles.formWidth}>
               <Text style={styles.title}>Create Local Profile</Text>
@@ -249,13 +277,22 @@ export default function UserFound() {
             </View>
           )}
 
-          {/* VIEW 3: ACCOUNT MANUAL VERIFICATION FALLBACK */}
           {viewState === "login_form" && (
             <View style={styles.formWidth}>
               <Text style={styles.title}>Device Locked</Text>
               <Text style={styles.subtitle}>
-                Provide your master security credentials key to unlock records.
+                Provide your master security credentials to unlock your profile
+                records.
               </Text>
+
+              <Text style={styles.label}>Profile Username</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter username"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+              />
 
               <Text style={styles.label}>Master Password</Text>
               <TextInput
@@ -272,22 +309,15 @@ export default function UserFound() {
                 activeOpacity={0.8}
                 onPress={handleManualLogin}
               >
-                <Text style={styles.buttonText}>Verify Security Key</Text>
+                <Text style={styles.buttonText}>Verify Security Profile</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.biometricRetryLink}
-                onPress={() => {
-                  db.getFirstAsync(
-                    "SELECT * FROM user WHERE id = ?;",
-                    [1],
-                  ).then((res) => {
-                    if (res) handleBiometricAuth(res);
-                  });
-                }}
+                onPress={handleBiometricRetry}
               >
                 <Text style={styles.biometricRetryLinkText}>
-                  Use Biometric Login (FaceID / TouchID)
+                  Retry Biometric Login (FaceID / TouchID)
                 </Text>
               </TouchableOpacity>
             </View>

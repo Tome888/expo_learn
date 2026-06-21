@@ -1,5 +1,5 @@
 export default interface User {
   id: number;
   name: string;
-  password: string;
+  is_biometric_enabled: number;
 }
