@@ -9,6 +9,7 @@ import {
 import * as ExpoBlur from "expo-blur";
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import { Ionicons } from "@expo/vector-icons";
+import { StatusBar } from "expo-status-bar";
 
 // Import our new global hook
 import { useAppTheme } from "@/context/ThemeContext";
@@ -105,6 +106,8 @@ export default function TabLayout() {
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <StatusBar style={isDark ? "light" : "dark"} animated={true} />
+
       {typeof AnimatedSplashOverlay !== "undefined" ? (
         <AnimatedSplashOverlay />
       ) : null}
